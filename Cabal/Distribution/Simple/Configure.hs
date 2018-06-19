@@ -124,6 +124,8 @@ import qualified Data.Map as Map
 import System.Directory
     ( doesFileExist, createDirectoryIfMissing, getTemporaryDirectory
     , removeFile)
+import System.Exit
+       ( ExitCode(..) )
 import System.FilePath
     ( (</>), isAbsolute, takeDirectory )
 import qualified System.Info
@@ -1764,11 +1766,13 @@ checkForeignDeps pkg lbi verbosity =
                 hPutStrLn cHnd program
                 hClose cHnd
                 hClose oHnd
-                _ <- getDbProgramOutput verbosity
+                r <- getDbProgramOutputAndErrors verbosity
                   gccProgram (withPrograms lbi) (cName:"-o":oNname:args)
-                return True
-           `catchIO`   (\_ -> return False)
-           `catchExit` (\_ -> return False)
+                case r of
+                  (_out, _err, ExitSuccess)   -> return True
+                  (_out, _err, ExitFailure 1) -> return False
+                  (_out,  err, ExitFailure c) ->
+                    die' verbosity $ "gcc: Exited with abnormal status: " ++ show c ++ "\n" ++ err
 
         explainErrors Nothing [] = return () -- should be impossible!
         explainErrors _ _

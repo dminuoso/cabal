@@ -61,6 +61,7 @@ module Distribution.Simple.Program (
     , programInvocation
     , runProgramInvocation
     , getProgramInvocationOutput
+    , getProgramOutputAndErrors
 
     -- * The collection of unconfigured and configured programs
     , builtinPrograms
@@ -92,6 +93,7 @@ module Distribution.Simple.Program (
     , requireProgramVersion
     , runDbProgram
     , getDbProgramOutput
+    , getDbProgramOutputAndErrors
 
     -- * Programs that Cabal knows about
     , ghcProgram
@@ -144,6 +146,8 @@ import Distribution.Simple.Program.Find
 import Distribution.Simple.Utils
 import Distribution.Verbosity
 
+import System.Exit (ExitCode)
+
 -- | Runs the given configured program.
 runProgram :: Verbosity          -- ^Verbosity
            -> ConfiguredProgram  -- ^The program to run
@@ -162,6 +166,28 @@ getProgramOutput :: Verbosity          -- ^Verbosity
 getProgramOutput verbosity prog args =
   getProgramInvocationOutput verbosity (programInvocation prog args)
 
+-- | Runs the given configured program and gets the output, errors and exitcode.
+--
+getProgramOutputAndErrors :: Verbosity          -- ^Verbosity
+                          -> ConfiguredProgram  -- ^The program to run
+                          -> [ProgArg]          -- ^Any /extra/ arguments to add
+                          -> IO (String, String, ExitCode)
+getProgramOutputAndErrors verbosity prog args =
+  getProgramInvocationOutputAndErrors verbosity (programInvocation prog args)
+
+runDbWith :: (Verbosity -> ConfiguredProgram -> [ProgArg] -> IO a)
+          -> Verbosity
+          -> Program
+          -> ProgramDb
+          -> [ProgArg]
+          -> IO a
+runDbWith runner verbosity prog programDb args =
+  case lookupProgram prog programDb of
+    Nothing             -> die' verbosity notFound
+    Just configuredProg -> runner verbosity configuredProg args
+ where
+   notFound = "The program '" ++ programName prog
+           ++ "' is required but it could not be found"
 
 -- | Looks up the given program in the program database and runs it.
 --
@@ -170,28 +196,25 @@ runDbProgram :: Verbosity  -- ^verbosity
              -> ProgramDb  -- ^look up the program here
              -> [ProgArg]  -- ^Any /extra/ arguments to add
              -> IO ()
-runDbProgram verbosity prog programDb args =
-  case lookupProgram prog programDb of
-    Nothing             -> die' verbosity notFound
-    Just configuredProg -> runProgram verbosity configuredProg args
- where
-   notFound = "The program '" ++ programName prog
-           ++ "' is required but it could not be found"
+runDbProgram = runDbWith runProgram
 
--- | Looks up the given program in the program database and runs it.
---
+-- | Looks up the given program in the program database and runs it
+-- returning the output
 getDbProgramOutput :: Verbosity  -- ^verbosity
                    -> Program    -- ^The program to run
                    -> ProgramDb  -- ^look up the program here
                    -> [ProgArg]  -- ^Any /extra/ arguments to add
                    -> IO String
-getDbProgramOutput verbosity prog programDb args =
-  case lookupProgram prog programDb of
-    Nothing             -> die' verbosity notFound
-    Just configuredProg -> getProgramOutput verbosity configuredProg args
- where
-   notFound = "The program '" ++ programName prog
-           ++ "' is required but it could not be found"
+getDbProgramOutput = runDbWith getProgramOutput
+
+-- | Looks up the given program in the program database and runs it
+-- returning the output, errors and exit code.
+getDbProgramOutputAndErrors :: Verbosity  -- ^verbosity
+                            -> Program    -- ^The program to run
+                            -> ProgramDb  -- ^look up the program here
+                            -> [ProgArg]  -- ^Any /extra/ arguments to add
+                            -> IO (String, String, ExitCode)
+getDbProgramOutputAndErrors = runDbWith getProgramOutputAndErrors
 
 
 ---------------------
